@@ -122,6 +122,53 @@ End Function '' of Function EncloseWithDQ
 
 
 
+Function IsAccountLockedDn(ByVal strDn)
+	''
+	''	Check if an account is locked using command line tool ADFIND.EXE
+	''
+	''	Result:
+	''		True		Account is locked
+	''		False		Account is not locked.
+	''
+	''	Source:
+	''		http://stackoverflow.com/questions/11795294/detect-if-an-active-directory-user-account-is-locked-using-ldap-in-python
+	''
+	Dim		strCommand
+	Dim		strFilter
+	Dim		objShell
+	Dim		objExec
+	Dim		strOutput
+	Dim		intLockoutTimeValue
+	Dim		blnResult
+	
+	strFilter = "(lockoutTime>=1)"
+	strCommand = "adfind.exe -b " & EncloseWithDQ(strDn) & " -f " & EncloseWithDQ(strFilter) & " lockoutTime "
+	strCommand = strCommand & " -csv -nocsvheader -nodn -nocsvq"
+
+	'WScript.Echo strCommand
+	
+	Set objShell = CreateObject("WScript.Shell")
+	Set objExec = objShell.Exec(strCommand)
+	Do
+		strOutput = objExec.Stdout.ReadLine()
+		'WScript.Echo "strOutput: " & strOutput
+		
+		If Len(strOutput) > 0 Then
+			'intLockoutTimeValue = Int(strOutput)
+			blnResult = True
+		Else	
+			'intLockoutTimeValue = 0
+			blnResult = False
+		End If
+	Loop While Not objExec.Stdout.atEndOfStream
+	Set objExec = Nothing
+	Set objShell = Nothing
+	
+	'WScript.Echo "intLockoutTimeValue=" & intLockoutTimeValue
+	IsAccountLockedDn = blnResult
+End Function '' of Function IsAccountLockedDn
+
+
 Function DsQueryGetDn(ByVal strRootDse, ByVal strUserName)
 	''
 	''	Use the DSQUERY.EXE command to find a DN of a CN in a specific AD set by strRootDse
@@ -298,12 +345,15 @@ Sub ScriptRun()
 		objFile.WriteLine "User must change password at next logon"
 		Call RunCommand(strCommand)
 			
-		'' dsmod.exe user userdn -disabled no 
-		strCommand = "dsmod.exe user " & EncloseWithDQ(strDn) & " -disabled no"
-		WScript.Echo strCommand
-		''objFile.WriteLine
-		''objFile.WriteLine "Extra: account is unlocked"
-		Call RunCommand(strCommand)
+		If IsAccountLockedDn(strDn) = True Then
+			'' The account is locked out, unlock it!
+			'' dsmod.exe user userdn -disabled no
+			strCommand = "dsmod.exe user " & EncloseWithDQ(strDn) & " -disabled no"
+			'WScript.Echo strCommand
+			objFile.WriteLine
+			objFile.WriteLine "Extra: account is unlocked"
+			Call RunCommand(strCommand)
+		End If
 		
 		objFile.Close
 		Set objFile = Nothing
